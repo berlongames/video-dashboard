@@ -1,4 +1,5 @@
-const API = "/api";
+// Same-origin /api on Cloudflare Pages (Function), or override via Vite env
+const API = (import.meta.env.VITE_API_BASE || "") + "/api";
 
 function authHeaders() {
   const user = localStorage.getItem("vd_user") || "admin";

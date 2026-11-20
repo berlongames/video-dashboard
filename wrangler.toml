@@ -1,0 +1,10 @@
+# Cloudflare Pages + optional Worker (backend example)
+# Docs: https://developers.cloudflare.com/pages/
+
+name = "video-dashboard"
+compatibility_date = "2026-11-20"
+pages_build_output_dir = "frontend/dist"
+
+# Optional: bind a Worker for /api/* when using Pages Functions
+# [vars]
+# API_UPSTREAM = "https://your-vps.example.com"
