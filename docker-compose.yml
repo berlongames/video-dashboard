@@ -1,0 +1,110 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: video
+      POSTGRES_PASSWORD: video
+      POSTGRES_DB: video_dashboard
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U video -d video_dashboard"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://video:video@db:5432/video_dashboard
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      UPLOAD_DIR: /data/uploads
+      OUTPUT_DIR: /data/outputs
+      TEMP_DIR: /data/temp
+    volumes:
+      - ./data:/data
+      - ./secrets:/secrets:ro
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://video:video@db:5432/video_dashboard
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      UPLOAD_DIR: /data/uploads
+      OUTPUT_DIR: /data/outputs
+      TEMP_DIR: /data/temp
+    volumes:
+      - ./data:/data
+      - ./secrets:/secrets:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    command: celery -A app.celery_app worker -l info -Q clip,upload,default --concurrency=1
+
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://video:video@db:5432/video_dashboard
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    volumes:
+      - ./data:/data
+      - ./secrets:/secrets:ro
+    depends_on:
+      - worker
+    command: celery -A app.celery_app beat -l info
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  redis_data:
+  pg_data:
