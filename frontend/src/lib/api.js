@@ -34,6 +34,12 @@ export const api = {
   getJob: (id) => request(`/jobs/${id}`),
   createJob: (formData) =>
     request("/jobs", { method: "POST", body: formData }),
+  createJobJson: (body) =>
+    request("/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   retryJob: (id) => request(`/jobs/${id}/retry`, { method: "POST" }),
   deleteJob: (id) => request(`/jobs/${id}`, { method: "DELETE" }),
 
