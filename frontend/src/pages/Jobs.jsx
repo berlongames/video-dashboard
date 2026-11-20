@@ -1,6 +1,9 @@
 import { useEffect, useState, useRef } from "react";
 import { api } from "../lib/api";
-import { Upload, RefreshCw, Trash2, Layers } from "lucide-react";
+import { Upload, RefreshCw, Trash2, Layers, Play, Download, X } from "lucide-react";
+
+const DEMO_PREVIEW =
+  "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
 
 function StatusBadge({ status }) {
   const colors = {
@@ -16,6 +19,67 @@ function StatusBadge({ status }) {
   );
 }
 
+function mediaUrl(job) {
+  if (job.output_url) return job.output_url;
+  if (job.preview_url) return job.preview_url;
+  if (job.output_path) {
+    const name = String(job.output_path).split(/[/\\]/).pop();
+    return `/media/outputs/${encodeURIComponent(name)}`;
+  }
+  if (job.status === "completed") return DEMO_PREVIEW;
+  return null;
+}
+
+function PreviewModal({ job, onClose }) {
+  const url = mediaUrl(job);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div
+        className="bg-slate-900 border border-slate-700 rounded-xl max-w-3xl w-full shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+          <div>
+            <h3 className="font-semibold text-white text-sm">{job.title}</h3>
+            <p className="text-xs text-slate-500">
+              {job.output_duration ? `${Math.round(job.output_duration)}s` : "Preview"}
+              {job.note ? ` · ${job.note}` : ""}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-1">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="bg-black aspect-video flex items-center justify-center">
+          {url ? (
+            <video src={url} controls autoPlay className="w-full h-full max-h-[70vh]" />
+          ) : (
+            <p className="text-slate-500 text-sm p-8 text-center">
+              No output file yet. Connect the VPS backend to generate real clips.
+            </p>
+          )}
+        </div>
+        <div className="px-4 py-3 flex justify-end gap-2 border-t border-slate-800">
+          {url && (
+            <a
+              href={url}
+              download={`${(job.title || "clip").replace(/\s+/g, "_")}.mp4`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg"
+            >
+              <Download size={14} /> Download
+            </a>
+          )}
+          <button onClick={onClose} className="text-sm text-slate-400 px-3 py-2">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Jobs() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,6 +87,7 @@ export default function Jobs() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [formOk, setFormOk] = useState("");
+  const [previewJob, setPreviewJob] = useState(null);
   const fileRef = useRef();
 
   const load = () => {
@@ -61,11 +126,7 @@ export default function Jobs() {
         source_names: Array.from(files).map((f) => f.name),
       };
       await api.createJobJson(payload);
-      setFormOk(
-        files.length
-          ? `Job created (${files.length} file name(s)). Video bytes are NOT uploaded on Vercel — AutoClip needs a VPS.`
-          : "Job created from URL(s). Real processing needs a VPS backend."
-      );
+      setFormOk("Job created. When status is completed, use Preview or Download.");
       setShowForm(false);
       form.reset();
       if (fileRef.current) fileRef.current.value = "";
@@ -75,6 +136,22 @@ export default function Jobs() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function downloadJob(job) {
+    const url = mediaUrl(job);
+    if (!url) {
+      alert("No output file available yet.");
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(job.title || "clip").replace(/\s+/g, "_")}.mp4`;
+    a.target = "_blank";
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   }
 
   return (
@@ -90,16 +167,12 @@ export default function Jobs() {
       </div>
 
       {formOk && (
-        <div className="mb-4 text-sm text-emerald-400 bg-emerald-950/40 border border-emerald-900 px-3 py-2 rounded-lg">
-          {formOk}
-        </div>
+        <div className="mb-4 text-sm text-emerald-400 bg-emerald-950/40 border border-emerald-900 px-3 py-2 rounded-lg">{formOk}</div>
       )}
 
       {showForm && (
         <form onSubmit={handleCreate} className="bg-slate-900 border border-slate-800 rounded-xl p-5 mb-6 space-y-4">
-          {formError && (
-            <div className="text-sm text-red-400 bg-red-950/40 px-3 py-2 rounded-lg">{formError}</div>
-          )}
+          {formError && <div className="text-sm text-red-400 bg-red-950/40 px-3 py-2 rounded-lg">{formError}</div>}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-slate-400">Title</label>
@@ -126,15 +199,12 @@ export default function Jobs() {
             </div>
           </div>
           <div>
-            <label className="text-xs text-slate-400">Source URLs (comma-separated, optional)</label>
+            <label className="text-xs text-slate-400">Source URLs (optional)</label>
             <input name="source_urls" className="w-full mt-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://youtube.com/..." />
           </div>
           <div>
             <label className="text-xs text-slate-400">Upload video files</label>
             <input ref={fileRef} type="file" accept="video/*" multiple className="w-full mt-1 text-sm text-slate-400" />
-            <p className="text-xs text-slate-500 mt-1">
-              Demo mode: only file <strong>names</strong> are sent. Real AutoClip runs on a VPS with Docker.
-            </p>
           </div>
           <div className="flex gap-2">
             <button type="submit" disabled={submitting} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg">
@@ -179,14 +249,35 @@ export default function Jobs() {
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
+                    {j.status === "completed" && (
+                      <>
+                        <button
+                          onClick={() => setPreviewJob(j)}
+                          className="inline-flex items-center gap-1 text-xs text-brand-400 hover:text-brand-300 border border-brand-800/60 rounded-md px-2 py-1"
+                          title="Preview"
+                        >
+                          <Play size={13} /> Preview
+                        </button>
+                        <button
+                          onClick={() => downloadJob(j)}
+                          className="inline-flex items-center gap-1 text-xs text-slate-300 hover:text-white border border-slate-700 rounded-md px-2 py-1"
+                          title="Download"
+                        >
+                          <Download size={13} /> Download
+                        </button>
+                      </>
+                    )}
                     {j.status === "failed" && (
                       <button onClick={() => api.retryJob(j.id).then(load)} className="text-slate-400 hover:text-white" title="Retry">
                         <RefreshCw size={15} />
                       </button>
                     )}
                     <button
-                      onClick={() => { if (confirm("Delete this job?")) api.deleteJob(j.id).then(load).catch(() => setJobs((x) => x.filter((y) => y.id !== j.id))); }}
+                      onClick={() => {
+                        if (confirm("Delete this job?"))
+                          api.deleteJob(j.id).then(load).catch(() => setJobs((x) => x.filter((y) => y.id !== j.id)));
+                      }}
                       className="text-slate-400 hover:text-red-400"
                       title="Delete"
                     >
@@ -198,12 +289,14 @@ export default function Jobs() {
             ))}
             {!loading && jobs.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">No clip jobs yet. Create one to get started.</td>
+                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">No clip jobs yet.</td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {previewJob && <PreviewModal job={previewJob} onClose={() => setPreviewJob(null)} />}
     </div>
   );
 }
