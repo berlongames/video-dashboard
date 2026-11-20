@@ -56,6 +56,14 @@ export const api = {
 
   statsSummary: () => request("/stats/summary"),
   videoStats: (ytId) => request(`/stats/video/${ytId}`),
+
+  saveAiConnector: (body) =>
+    request("/settings/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  getAiConnector: () => request("/settings/ai"),
 };
 
 export function setCredentials(user, pass) {
