@@ -8,6 +8,8 @@ let jobs = [
     source_paths: [],
     source_names: ["demo.mp4"],
     output_path: null,
+    output_url:
+      "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     output_duration: 600,
     progress: 1,
     stage: "done",
@@ -16,6 +18,7 @@ let jobs = [
     platform: "youtube_long",
     created_at: new Date().toISOString(),
     completed_at: new Date().toISOString(),
+    note: "Demo sample video",
   },
 ];
 
@@ -97,6 +100,8 @@ module.exports = async function handler(req, res) {
         j.stage = "done";
         j.output_duration = j.target_duration;
         j.completed_at = new Date().toISOString();
+        j.output_url =
+          "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
       }
     }, 4000);
 
