@@ -4,6 +4,7 @@ import {
   Scissors,
   CalendarClock,
   BarChart3,
+  Settings,
 } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import Jobs from "./pages/Jobs";
@@ -56,15 +57,20 @@ function Shell({ children }) {
 }
 
 export default function App() {
-  const [authed, setAuthed] = useState(!!localStorage.getItem("vd_pass"));
+  const [authed, setAuthed] = useState(
+    !!localStorage.getItem("vd_pass")
+  );
 
   useEffect(() => {
-    if (authed) {
-      api.me().catch(() => {
+    if (!authed) return;
+    // Only log out on explicit 401; network / missing API should not bounce to login
+    api.me().catch((err) => {
+      const msg = String(err?.message || err || "");
+      if (msg.includes("401") || msg.toLowerCase().includes("unauthorized")) {
         localStorage.removeItem("vd_pass");
         setAuthed(false);
-      });
-    }
+      }
+    });
   }, [authed]);
 
   if (!authed) {
