@@ -1,4 +1,7 @@
 // In-memory mock store (resets on cold start — demo only)
+const DEMO_VIDEO =
+  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
+
 let jobs = [
   {
     id: 1,
@@ -8,8 +11,7 @@ let jobs = [
     source_paths: [],
     source_names: ["demo.mp4"],
     output_path: null,
-    output_url:
-      "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    output_url: DEMO_VIDEO,
     output_duration: 600,
     progress: 1,
     stage: "done",
@@ -100,8 +102,7 @@ module.exports = async function handler(req, res) {
         j.stage = "done";
         j.output_duration = j.target_duration;
         j.completed_at = new Date().toISOString();
-        j.output_url =
-          "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
+        j.output_url = DEMO_VIDEO;
       }
     }, 4000);
 
