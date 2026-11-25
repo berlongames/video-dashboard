@@ -52,6 +52,28 @@ function titleFromName(name) {
   return base.slice(0, 120);
 }
 
+function guessModelsFromFilename(name) {
+  const base = String(name || "")
+    .replace(/\.[^/.]+$/, "")
+    .replace(/[\[\](){}]/g, " ");
+  const parts = base.split(/[_\-.\s]+/).filter(Boolean);
+  const skip = new Set([
+    "hd","4k","1080p","720p","480p","xxx","mp4","scene","full","video","porn",
+    "sex","hot","new","and","the","with","feat","ft",
+  ]);
+  const names = [];
+  for (const p of parts) {
+    if (skip.has(p.toLowerCase())) continue;
+    if (/^\d+$/.test(p)) continue;
+    if (p.length < 2 || p.length > 20) continue;
+    if (/^[A-Za-z]+$/.test(p) && p[0] === p[0].toUpperCase()) {
+      names.push(p);
+    }
+    if (names.length >= 4) break;
+  }
+  return names.slice(0, 3).join(", ");
+}
+
 function normalizeCategories(raw) {
   const allowed = new Set(PH_CATEGORIES.map((c) => c.toLowerCase()));
   const byLower = Object.fromEntries(PH_CATEGORIES.map((c) => [c.toLowerCase(), c]));
@@ -81,14 +103,15 @@ async function callOpenAICompatible({ baseUrl, apiKey, model, filename, platform
   const catList = PH_CATEGORIES.join(", ");
   const system = `You generate SEO-friendly adult tube video metadata.
 Reply with JSON only (no markdown):
-{"title":"...","tags":"comma,separated","categories":["Cat1","Cat2",...]}
+{"title":"...","tags":"comma,separated","categories":["Cat1","Cat2",...],"model":"Name1, Name2"}
 Rules:
 - title max 90 chars
 - tags: short keywords
 - categories: pick BETWEEN 2 and 8 items, ONLY from this exact list: ${catList}
+- model: performer / actor names if present in the filename (comma-separated). Use empty string if unknown. Do not invent famous stars not suggested by the filename.
 - Do not invent categories outside the list.`;
 
-  const user = `Filename: ${filename}\nPlatform: ${platform || "ph"}\nSuggest title, tags, and 2-8 categories from the allowed list.`;
+  const user = `Filename: ${filename}\nPlatform: ${platform || "ph"}\nSuggest title, tags, 2-8 categories from the allowed list, and model/performer names if the filename implies them.`;
 
   const res = await fetch(url, {
     method: "POST",
@@ -131,14 +154,20 @@ Rules:
 
   const tags = parsed?.tags ? String(parsed.tags).slice(0, 200) : "";
   const categories = normalizeCategories(parsed?.categories);
+  const modelNames = parsed?.model
+    ? String(parsed.model).slice(0, 200)
+    : guessModelsFromFilename(filename);
 
   return {
     title,
     tags,
     categories,
     categories_csv: categories.join(", "),
+    model: modelNames,
     confidence: parsed?.title ? 0.85 : 0.6,
-    note: `AI via ${root} · model ${model && model !== "admin" ? model : "gpt-4o-mini"} · ${categories.length} categories`,
+    note:
+      `AI via ${root} · llm ${model && model !== "admin" ? model : "gpt-4o-mini"} · ${categories.length} cats` +
+      (modelNames ? ` · models: ${modelNames}` : ""),
     source: "infistar",
   };
 }
@@ -191,6 +220,7 @@ module.exports = async function handler(req, res) {
           .join(","),
         categories,
         categories_csv: categories.join(", "),
+        model: guessModelsFromFilename(primary),
         confidence: 0.4,
         note: `AI call failed, used filename. ${String(err.message || err).slice(0, 180)}`,
         source: "fallback",
@@ -211,6 +241,7 @@ module.exports = async function handler(req, res) {
       .join(","),
     categories,
     categories_csv: categories.join(", "),
+    model: guessModelsFromFilename(primary),
     confidence: 0.5,
     note: "No AI key/base URL — filename title + default categories.",
     source: "filename",
