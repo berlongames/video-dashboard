@@ -1,3 +1,19 @@
+const PH_CATEGORIES = [
+  "18-25","Ai","Amateur","Anal","Arab","Asian","Babe","Babysitter (18+)","BBW",
+  "Behind The Scenes","Big Ass","Big Dick","Big Tits","Blonde","Blowjob","Bondage",
+  "Brazilian","British","Brunette","Bukkake","Cartoon","Casting","Celebrity",
+  "College (18+)","Compilation","Cosplay","Creampie","Cuckold","Cumshot","Czech",
+  "Deepthroat","Double Penetration","Ebony","Feet","Female Orgasm","Fetish","Fisting",
+  "French","Gaming","Gangbang","German","Handjob","Hardcore","Hentai","Indian",
+  "Interracial","Italian","Japanese","Korean","Latina","Massage","Masturbation",
+  "Mature","MILF","Muscular Men","Music","Old/Young (18+)","Orgy","Parody","Party",
+  "Pissing","Podcast","POV","Public","Pussy Licking","Reaction","Reality","Red Head",
+  "Role Play","Romantic","Rough Sex","Russian","School (18+)","Small Tits","Smoking",
+  "Solo Female","Solo Male","Squirt","Tattooed Women","Threesome","Toys","Vintage",
+  "Virtual Reality","Webcam","Cartoon - Uncensored","Hentai - Uncensored",
+  "Threesome - FFM","Threesome - FMM","Virtual Reality - POV",
+];
+
 function cors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
@@ -36,12 +52,43 @@ function titleFromName(name) {
   return base.slice(0, 120);
 }
 
+function normalizeCategories(raw) {
+  const allowed = new Set(PH_CATEGORIES.map((c) => c.toLowerCase()));
+  const byLower = Object.fromEntries(PH_CATEGORIES.map((c) => [c.toLowerCase(), c]));
+  let list = [];
+  if (Array.isArray(raw)) list = raw;
+  else if (typeof raw === "string") list = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  const out = [];
+  for (const item of list) {
+    const key = String(item).toLowerCase();
+    if (allowed.has(key) && byLower[key] && !out.includes(byLower[key])) {
+      out.push(byLower[key]);
+    }
+  }
+  if (out.length > 8) return out.slice(0, 8);
+  if (out.length >= 2) return out;
+  const pad = ["Amateur", "Hardcore", "Babe", "POV", "Reality"];
+  for (const p of pad) {
+    if (out.length >= 2) break;
+    if (!out.includes(p)) out.push(p);
+  }
+  return out.slice(0, 8);
+}
+
 async function callOpenAICompatible({ baseUrl, apiKey, model, filename, platform }) {
   const root = String(baseUrl || "").replace(/\/+$/, "");
   const url = `${root}/chat/completions`;
-  const system =
-    "You generate SEO-friendly video titles and tags. Reply with JSON only: {\"title\":\"...\",\"tags\":\"comma,separated\"}. Title max 90 chars. No markdown.";
-  const user = `Filename: ${filename}\nPlatform preset: ${platform || "general"}\nSuggest a title and tags for uploading this video.`;
+  const catList = PH_CATEGORIES.join(", ");
+  const system = `You generate SEO-friendly adult tube video metadata.
+Reply with JSON only (no markdown):
+{"title":"...","tags":"comma,separated","categories":["Cat1","Cat2",...]}
+Rules:
+- title max 90 chars
+- tags: short keywords
+- categories: pick BETWEEN 2 and 8 items, ONLY from this exact list: ${catList}
+- Do not invent categories outside the list.`;
+
+  const user = `Filename: ${filename}\nPlatform: ${platform || "ph"}\nSuggest title, tags, and 2-8 categories from the allowed list.`;
 
   const res = await fetch(url, {
     method: "POST",
@@ -50,8 +97,8 @@ async function callOpenAICompatible({ baseUrl, apiKey, model, filename, platform
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: model || "gpt-4o-mini",
-      temperature: 0.5,
+      model: model && model !== "admin" ? model : "gpt-4o-mini",
+      temperature: 0.4,
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
@@ -60,9 +107,7 @@ async function callOpenAICompatible({ baseUrl, apiKey, model, filename, platform
   });
 
   const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`AI HTTP ${res.status}: ${text.slice(0, 300)}`);
-  }
+  if (!res.ok) throw new Error(`AI HTTP ${res.status}: ${text.slice(0, 300)}`);
 
   let data;
   try {
@@ -80,22 +125,20 @@ async function callOpenAICompatible({ baseUrl, apiKey, model, filename, platform
     parsed = null;
   }
 
-  if (parsed?.title) {
-    return {
-      title: String(parsed.title).slice(0, 120),
-      tags: String(parsed.tags || "").slice(0, 200),
-      confidence: 0.85,
-      note: `AI title via ${root} · model ${model || "gpt-4o-mini"}`,
-      source: "infistar",
-    };
-  }
+  const title = parsed?.title
+    ? String(parsed.title).slice(0, 120)
+    : content.replace(/["`]/g, "").trim().slice(0, 120) || titleFromName(filename);
 
-  const cleaned = content.replace(/["`]/g, "").trim().slice(0, 120);
+  const tags = parsed?.tags ? String(parsed.tags).slice(0, 200) : "";
+  const categories = normalizeCategories(parsed?.categories);
+
   return {
-    title: cleaned || titleFromName(filename),
-    tags: "",
-    confidence: 0.6,
-    note: `AI reply parsed loosely · model ${model || "gpt-4o-mini"}`,
+    title,
+    tags,
+    categories,
+    categories_csv: categories.join(", "),
+    confidence: parsed?.title ? 0.85 : 0.6,
+    note: `AI via ${root} · model ${model && model !== "admin" ? model : "gpt-4o-mini"} · ${categories.length} categories`,
     source: "infistar",
   };
 }
@@ -129,7 +172,7 @@ module.exports = async function handler(req, res) {
       const result = await callOpenAICompatible({
         baseUrl,
         apiKey,
-        model: model && model !== "admin" ? model : "gpt-4o-mini",
+        model,
         filename: primary,
         platform: body.platform,
       });
@@ -137,6 +180,7 @@ module.exports = async function handler(req, res) {
       return;
     } catch (err) {
       const fallback = titleFromName(primary);
+      const categories = normalizeCategories(["Amateur", "Hardcore"]);
       res.status(200).json({
         title: fallback,
         tags: fallback
@@ -145,6 +189,8 @@ module.exports = async function handler(req, res) {
           .filter((w) => w.length > 3)
           .slice(0, 6)
           .join(","),
+        categories,
+        categories_csv: categories.join(", "),
         confidence: 0.4,
         note: `AI call failed, used filename. ${String(err.message || err).slice(0, 180)}`,
         source: "fallback",
@@ -154,6 +200,7 @@ module.exports = async function handler(req, res) {
   }
 
   const title = titleFromName(primary);
+  const categories = normalizeCategories(["Amateur", "Hardcore"]);
   res.status(200).json({
     title,
     tags: title
@@ -162,8 +209,10 @@ module.exports = async function handler(req, res) {
       .filter((w) => w.length > 3)
       .slice(0, 6)
       .join(","),
+    categories,
+    categories_csv: categories.join(", "),
     confidence: 0.5,
-    note: "No AI key/base URL sent — title from filename only. Save AI connector and re-select the file.",
+    note: "No AI key/base URL — filename title + default categories.",
     source: "filename",
   });
 };
