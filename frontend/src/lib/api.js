@@ -1,4 +1,3 @@
-// Same-origin /api on Cloudflare Pages (Function), or override via Vite env
 const API = (import.meta.env.VITE_API_BASE || "") + "/api";
 
 function authHeaders() {
@@ -64,6 +63,13 @@ export const api = {
       body: JSON.stringify(body),
     }),
   getAiConnector: () => request("/settings/ai"),
+
+  scanTitle: (body) =>
+    request("/ai/scan-title", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
 };
 
 export function setCredentials(user, pass) {
