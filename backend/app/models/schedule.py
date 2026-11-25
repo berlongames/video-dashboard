@@ -23,8 +23,19 @@ class UploadSchedule(Base):
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text, default="")
     tags: Mapped[str] = mapped_column(String(512), default="")
+    categories: Mapped[str] = mapped_column(String(255), default="")
     privacy: Mapped[str] = mapped_column(String(32), default="private")
     category_id: Mapped[str] = mapped_column(String(16), default="22")
+
+    # Uploader / tube-style metadata
+    video_type: Mapped[str] = mapped_column(String(32), default="free")  # adshare|viewshare|free
+    publish_when: Mapped[str] = mapped_column(String(32), default="now")  # now|schedule
+    orientation: Mapped[str] = mapped_column(String(32), default="straight")
+    language: Mapped[str] = mapped_column(String(64), default="English")
+    channel_site: Mapped[str] = mapped_column(String(255), default="")
+    model: Mapped[str] = mapped_column(String(255), default="")
+    join_now_url: Mapped[str] = mapped_column(String(512), default="")
+    sponsored: Mapped[bool] = mapped_column(Boolean, default=False)
 
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     status: Mapped[str] = mapped_column(SAEnum(ScheduleStatus), default=ScheduleStatus.pending, index=True)
