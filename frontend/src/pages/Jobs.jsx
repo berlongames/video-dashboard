@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef } from "react";
 import { api } from "../lib/api";
+import { PH_CATEGORIES } from "../lib/phCategories";
 import { Upload, RefreshCw, Trash2, Layers, Play, Download, X, Sparkles } from "lucide-react";
 
 const DEMO_PREVIEW = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
 const DEFAULT_UPLOADER = {
-  title: "", channel_site: "", model: "", tags: "", categories: "", sponsored: false,
+  title: "", channel_site: "", model: "", tags: "", categories: [], sponsored: false,
   video_type: "free", publish_when: "now", privacy: "public", orientation: "straight",
   language: "English", join_now_url: "", description: "",
 };
@@ -86,26 +87,31 @@ export default function Jobs() {
     setScanning(true);
     setScanNote("AI scanning video…");
     try {
-      let title = "", tags = "";
+      let title = "", tags = "", cats = [];
       try {
         let ai = {};
         try { ai = JSON.parse(localStorage.getItem("vd_ai_connector") || "{}"); } catch (_) {}
         const res = await api.scanTitle({
-          source_names: names,
-          platform,
-          apiKey: ai.apiKey || "",
-          baseUrl: ai.baseUrl || "",
-          model: ai.model || "",
+          source_names: names, platform,
+          apiKey: ai.apiKey || "", baseUrl: ai.baseUrl || "", model: ai.model || "",
         });
         title = res?.title || "";
         tags = res?.tags || "";
-        setScanNote(res?.note || "Title suggested from video scan.");
+        if (Array.isArray(res?.categories)) cats = res.categories;
+        else if (res?.categories_csv) cats = String(res.categories_csv).split(",").map((s) => s.trim()).filter(Boolean);
+        setScanNote(res?.note || "Title + categories from AI scan.");
       } catch {
         title = names[0].replace(/\.[^/.]+$/, "").replace(/[_\-.]+/g, " ").replace(/\s+/g, " ").trim();
         title = title.split(" ").map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(" ");
+        cats = ["Amateur", "Hardcore"];
         setScanNote("Title from filename (scanner offline).");
       }
-      setUploader((u) => ({ ...u, title: title || u.title, tags: tags || u.tags }));
+      setUploader((u) => ({
+        ...u,
+        title: title || u.title,
+        tags: tags || u.tags,
+        categories: (cats.length ? cats : u.categories || []).slice(0, 8),
+      }));
     } finally {
       setScanning(false);
     }
@@ -140,7 +146,7 @@ export default function Jobs() {
         platform,
         source_urls: sourceUrls,
         source_names: Array.from(files).map((f) => f.name),
-        uploader: { ...uploader },
+        uploader: { ...uploader, categories: uploader.categories || [] },
       });
       setFormOk("Job created. Uploader details saved with the job.");
       setShowForm(false);
@@ -217,7 +223,7 @@ export default function Jobs() {
           <div>
             <label className="text-xs text-slate-400">Upload video files</label>
             <input ref={fileRef} type="file" accept="video/*" multiple onChange={onFilesChange} className="w-full mt-1 text-sm text-slate-400" />
-            {scanning && <p className="text-xs text-amber-400 mt-2 flex items-center gap-1"><Sparkles size={12} /> AI scanning video for title…</p>}
+            {scanning && <p className="text-xs text-amber-400 mt-2 flex items-center gap-1"><Sparkles size={12} /> AI scanning video…</p>}
             {!scanning && scanNote && <p className="text-xs text-slate-500 mt-2">{scanNote}</p>}
           </div>
 
@@ -243,10 +249,42 @@ export default function Jobs() {
                   <label className="text-xs text-slate-400">Tags</label>
                   <input value={uploader.tags} onChange={(e) => setUp("tags", e.target.value)} className="w-full mt-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="comma,separated" />
                 </div>
-                <div>
-                  <label className="text-xs text-slate-400">Categories</label>
-                  <input value={uploader.categories} onChange={(e) => setUp("categories", e.target.value)} className="w-full mt-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm" />
+
+                <div className="md:col-span-2">
+                  <label className="text-xs text-slate-400">Categories (AI picks 2–8 · click to toggle)</label>
+                  <div className="mt-2 max-h-40 overflow-y-auto flex flex-wrap gap-1.5 p-2 bg-slate-800 border border-slate-700 rounded-lg">
+                    {PH_CATEGORIES.map((c) => {
+                      const selected = (uploader.categories || []).includes(c);
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => {
+                            setUploader((u) => {
+                              const cur = Array.isArray(u.categories) ? [...u.categories] : [];
+                              const i = cur.indexOf(c);
+                              if (i >= 0) cur.splice(i, 1);
+                              else if (cur.length < 8) cur.push(c);
+                              return { ...u, categories: cur };
+                            });
+                          }}
+                          className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                            selected
+                              ? "bg-brand-600 border-brand-500 text-white"
+                              : "bg-slate-900 border-slate-600 text-slate-400 hover:border-slate-500"
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {(uploader.categories || []).length} selected
+                    {(uploader.categories || []).length ? `: ${(uploader.categories || []).join(", ")}` : ""}
+                  </p>
                 </div>
+
                 <div>
                   <label className="text-xs text-slate-400 block mb-2">Sponsored?</label>
                   <div className="flex gap-2">
