@@ -87,7 +87,7 @@ export default function Jobs() {
     setScanning(true);
     setScanNote("AI scanning video…");
     try {
-      let title = "", tags = "", cats = [];
+      let title = "", tags = "", cats = [], modelNames = "";
       try {
         let ai = {};
         try { ai = JSON.parse(localStorage.getItem("vd_ai_connector") || "{}"); } catch (_) {}
@@ -97,9 +97,10 @@ export default function Jobs() {
         });
         title = res?.title || "";
         tags = res?.tags || "";
+        modelNames = res?.model || "";
         if (Array.isArray(res?.categories)) cats = res.categories;
         else if (res?.categories_csv) cats = String(res.categories_csv).split(",").map((s) => s.trim()).filter(Boolean);
-        setScanNote(res?.note || "Title + categories from AI scan.");
+        setScanNote(res?.note || "Title, models & categories from AI scan.");
       } catch {
         title = names[0].replace(/\.[^/.]+$/, "").replace(/[_\-.]+/g, " ").replace(/\s+/g, " ").trim();
         title = title.split(" ").map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(" ");
@@ -111,6 +112,7 @@ export default function Jobs() {
         title: title || u.title,
         tags: tags || u.tags,
         categories: (cats.length ? cats : u.categories || []).slice(0, 8),
+        model: modelNames || u.model || "",
       }));
     } finally {
       setScanning(false);
@@ -242,8 +244,8 @@ export default function Jobs() {
                   <input value={uploader.channel_site} onChange={(e) => setUp("channel_site", e.target.value)} className="w-full mt-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400">Model</label>
-                  <input value={uploader.model} onChange={(e) => setUp("model", e.target.value)} className="w-full mt-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm" />
+                  <label className="text-xs text-slate-400">Model / performers {scanning ? "(scanning…)" : "(AI filled)"}</label>
+                  <input value={uploader.model} onChange={(e) => setUp("model", e.target.value)} className="w-full mt-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="Names from AI / filename" />
                 </div>
                 <div className="md:col-span-2">
                   <label className="text-xs text-slate-400">Tags</label>
