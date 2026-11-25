@@ -88,7 +88,15 @@ export default function Jobs() {
     try {
       let title = "", tags = "";
       try {
-        const res = await api.scanTitle({ source_names: names, platform });
+        let ai = {};
+        try { ai = JSON.parse(localStorage.getItem("vd_ai_connector") || "{}"); } catch (_) {}
+        const res = await api.scanTitle({
+          source_names: names,
+          platform,
+          apiKey: ai.apiKey || "",
+          baseUrl: ai.baseUrl || "",
+          model: ai.model || "",
+        });
         title = res?.title || "";
         tags = res?.tags || "";
         setScanNote(res?.note || "Title suggested from video scan.");
