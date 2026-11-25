@@ -3,7 +3,7 @@ import { api } from "../lib/api";
 import { Upload, RefreshCw, Trash2, Layers, Play, Download, X } from "lucide-react";
 
 const DEMO_PREVIEW =
-  "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
+  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
 
 function StatusBadge({ status }) {
   const colors = {
