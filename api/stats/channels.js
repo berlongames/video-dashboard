@@ -64,7 +64,6 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** Mobile: only after contentTitle; URLs in underThumb-info */
 function parseAfterContentTitle(html) {
   const videos = [];
   const seen = new Set();
@@ -117,6 +116,7 @@ function parseAfterContentTitle(html) {
       viewkey,
       comment_count: null,
       last_comment: null,
+      comment_alt: null,
     });
     if (videos.length >= 40) break;
   }
@@ -145,6 +145,7 @@ function parseFallbackListing(html) {
       viewkey,
       comment_count: null,
       last_comment: null,
+      comment_alt: null,
     });
   }
   return videos;
@@ -181,17 +182,26 @@ function parseVideoComments(html) {
     if (g) comment_count = g[1].replace(/,/g, "");
   }
 
-  const cmtRe =
-    /class=["'][^"']*\bcommentMessage\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|span|p)>/gi;
+  const texts = [];
+  const textRe =
+    /class=["'][^"']*\bcommentText\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|span|p)>/gi;
   let m;
-  let last = null;
-  while ((m = cmtRe.exec(html))) {
-    const t = stripTags(m[1]);
-    if (t) last = t;
+  while ((m = textRe.exec(html))) {
+    const tx = stripTags(m[1]);
+    if (tx) texts.push(tx);
   }
-  last_comment = last;
+  if (!texts.length) {
+    const cmtRe =
+      /class=["'][^"']*\bcommentMessage\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|span|p)>/gi;
+    while ((m = cmtRe.exec(html))) {
+      const tx = stripTags(m[1]);
+      if (tx) texts.push(tx);
+    }
+  }
+  last_comment = texts.length ? texts[texts.length - 1] : null;
+  const comment_alt = texts.length ? texts[texts.length - 1] : null;
 
-  return { comment_count, last_comment };
+  return { comment_count, last_comment, comment_alt };
 }
 
 async function fetchHtml(url) {
@@ -243,6 +253,7 @@ async function scrapeChannel(url) {
       const meta = parseVideoComments(vhtml);
       videos[i].comment_count = meta.comment_count;
       videos[i].last_comment = meta.last_comment;
+      videos[i].comment_alt = meta.comment_alt || meta.last_comment;
     } catch {
       /* leave nulls */
     }
