@@ -60,69 +60,88 @@ function stripTags(s) {
   return decodeHtml(String(s || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
 }
 
-function extractVideoUListBlock(html) {
-  const openRe =
-    /<([a-z0-9]+)([^>]*\bclass=["'][^"']*\bvideoUList\b[^"']*\bclearfix\b[^"']*["'][^>]*)>/i;
-  const m = html.match(openRe);
-  if (!m) {
-    const open2 = /<([a-z0-9]+)([^>]*\bclass=["'][^"']*\bvideoUList\b[^"']*["'][^>]*)>/i;
-    const m2 = html.match(open2);
-    if (!m2) return null;
-    return sliceBalanced(html, m2.index, m2[1]);
-  }
-  return sliceBalanced(html, m.index, m[1]);
-}
-
-function sliceBalanced(html, startIdx, tagName) {
-  const tag = tagName.toLowerCase();
-  const openTag = new RegExp(`<${tag}\\b`, "gi");
-  const closeTag = new RegExp(`</${tag}\\s*>`, "gi");
-  openTag.lastIndex = startIdx;
-  const first = openTag.exec(html);
-  if (!first) return null;
-
-  let depth = 1;
-  let pos = first.index + first[0].length;
-  while (depth > 0 && pos < html.length) {
-    openTag.lastIndex = pos;
-    closeTag.lastIndex = pos;
-    const nextOpen = openTag.exec(html);
-    const nextClose = closeTag.exec(html);
-    if (!nextClose) break;
-    if (nextOpen && nextOpen.index < nextClose.index) {
-      depth += 1;
-      pos = nextOpen.index + nextOpen[0].length;
-    } else {
-      depth -= 1;
-      pos = nextClose.index + nextClose[0].length;
-      if (depth === 0) {
-        return html.slice(first.index, pos);
-      }
-    }
-  }
-  return html.slice(first.index, Math.min(html.length, first.index + 500000));
-}
-
-function parseListingFromVideoUList(html) {
-  const block = extractVideoUListBlock(html) || html;
+function parseThumbnailInfoWrappers(html) {
   const videos = [];
-  const seenKeys = new Set();
+  const seen = new Set();
 
-  const linkTitleRe =
-    /<a[^>]+href=["']((?:https?:\/\/[^"']+)?\/view_video\.php\?viewkey=([a-zA-Z0-9]+))["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const openRe =
+    /<([a-z0-9]+)([^>]*\bclass=["'][^"']*\bthumbnail-info-wrapper\b[^"']*["'][^>]*)>/gi;
 
   let m;
-  while ((m = linkTitleRe.exec(block)) && videos.length < 40) {
+  const opens = [];
+  while ((m = openRe.exec(html))) {
+    opens.push({ index: m.index, tag: m[1], full: m[0] });
+  }
+
+  for (let i = 0; i < opens.length; i++) {
+    const start = opens[i].index;
+    const end = i + 1 < opens.length ? opens[i + 1].index : Math.min(html.length, start + 4000);
+    const block = html.slice(start, end);
+
+    if (!/\bthumbnail-info-wrapper\b/i.test(block)) continue;
+
+    const linkM = block.match(
+      /href=["']((?:https?:\/\/[^"']+)?\/view_video\.php\?viewkey=([a-zA-Z0-9]+))["']/i
+    );
+    if (!linkM) continue;
+    const viewkey = linkM[2];
+    if (seen.has(viewkey)) continue;
+    let href = linkM[1];
+    if (href.startsWith("/")) href = "https://www.pornhub.com" + href;
+
+    let title = "";
+    const titleM = block.match(
+      /class=["'][^"']*\btitle\b[^"']*["'][^>]*>[\s\S]*?<a[^>]+href=["'][^"']*viewkey=[^"']+["'][^>]*>([\s\S]*?)<\/a>/i
+    );
+    if (titleM) title = stripTags(titleM[1]);
+    if (!title) {
+      const aM = block.match(
+        new RegExp(
+          `href=["'][^"']*viewkey=${viewkey}["'][^>]*>([\\s\\S]*?)<\\/a>`,
+          "i"
+        )
+      );
+      if (aM) title = stripTags(aM[1]);
+    }
+    if (!title || title.length < 2) title = `Video ${viewkey}`;
+
+    let views = "—";
+    const viewsM = block.match(
+      /class=["'][^"']*\bviews\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:span|div|var|li|a)>/i
+    );
+    if (viewsM) views = stripTags(viewsM[1]) || "—";
+
+    seen.add(viewkey);
+    videos.push({
+      title: title.slice(0, 200),
+      views,
+      url: href,
+      viewkey,
+      comment_count: null,
+      last_comment: null,
+    });
+    if (videos.length >= 40) break;
+  }
+
+  return videos;
+}
+
+function parseFallbackListing(html) {
+  const videos = [];
+  const seen = new Set();
+  const re =
+    /<a[^>]+href=["']((?:https?:\/\/[^"']+)?\/view_video\.php\?viewkey=([a-zA-Z0-9]+))["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(html)) && videos.length < 40) {
     const viewkey = m[2];
-    if (seenKeys.has(viewkey)) continue;
+    if (seen.has(viewkey)) continue;
     let href = m[1];
     if (href.startsWith("/")) href = "https://www.pornhub.com" + href;
-    let title = stripTags(m[3]);
+    const title = stripTags(m[3]);
     if (!title || title.length < 3) continue;
-    if (title.length > 200) title = title.slice(0, 200);
-    seenKeys.add(viewkey);
+    seen.add(viewkey);
     videos.push({
-      title,
+      title: title.slice(0, 200),
       views: "—",
       url: href,
       viewkey,
@@ -130,40 +149,6 @@ function parseListingFromVideoUList(html) {
       last_comment: null,
     });
   }
-
-  if (videos.length < 5) {
-    const titleRe =
-      /class=["'][^"']*\btitle\b[^"']*["'][^>]*>[\s\S]*?<a[^>]+href=["']((?:https?:\/\/[^"']+)?\/view_video\.php\?viewkey=([a-zA-Z0-9]+))["'][^>]*>([\s\S]*?)<\/a>/gi;
-    while ((m = titleRe.exec(block)) && videos.length < 40) {
-      const viewkey = m[2];
-      if (seenKeys.has(viewkey)) continue;
-      let href = m[1];
-      if (href.startsWith("/")) href = "https://www.pornhub.com" + href;
-      const title = stripTags(m[3]);
-      if (!title || title.length < 3) continue;
-      seenKeys.add(viewkey);
-      videos.push({
-        title: title.slice(0, 200),
-        views: "—",
-        url: href,
-        viewkey,
-        comment_count: null,
-        last_comment: null,
-      });
-    }
-  }
-
-  for (const v of videos) {
-    const key = v.viewkey;
-    const nearby = block.indexOf(key);
-    if (nearby < 0) continue;
-    const slice = block.slice(Math.max(0, nearby - 200), nearby + 800);
-    const vm = slice.match(
-      /class=["'][^"']*\bviews\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:span|div|var|li)>/i
-    );
-    if (vm) v.views = stripTags(vm[1]) || "—";
-  }
-
   return videos;
 }
 
@@ -225,7 +210,12 @@ async function scrapeChannel(url) {
     };
   }
 
-  const videos = parseListingFromVideoUList(html);
+  let videos = parseThumbnailInfoWrappers(html);
+  let source = "thumbnail-info-wrapper";
+  if (videos.length === 0) {
+    videos = parseFallbackListing(html);
+    source = "fallback-links";
+  }
 
   const limit = Math.min(videos.length, 12);
   for (let i = 0; i < limit; i++) {
@@ -248,8 +238,8 @@ async function scrapeChannel(url) {
     scraped_at: new Date().toISOString(),
     note:
       videos.length > 0
-        ? `Titles from videoUList clearfix: ${videos.length}. Comments scraped for ${limit} video pages.`
-        : "No videos found inside videoUList clearfix (blocked or JS-rendered HTML).",
+        ? `Source: ${source}. ${videos.length} videos; comments from ${limit} pages.`
+        : "No thumbnail-info-wrapper (or links) found — HTML empty or JS-rendered.",
   };
 }
 
