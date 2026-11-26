@@ -60,25 +60,32 @@ function stripTags(s) {
   return decodeHtml(String(s || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
 }
 
-function parseThumbnailInfoWrappers(html) {
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Mobile: only after contentTitle; URLs in underThumb-info */
+function parseAfterContentTitle(html) {
   const videos = [];
   const seen = new Set();
 
-  const openRe =
-    /<([a-z0-9]+)([^>]*\bclass=["'][^"']*\bthumbnail-info-wrapper\b[^"']*["'][^>]*)>/gi;
+  let start = -1;
+  const ct = html.match(/class=["'][^"']*\bcontentTitle\b[^"']*["']/i);
+  if (ct) start = ct.index;
+  const scope = start >= 0 ? html.slice(start) : html;
 
+  const openRe =
+    /<([a-z0-9]+)([^>]*\bclass=["'][^"']*\bunderThumb-info\b[^"']*["'][^>]*)>/gi;
   let m;
   const opens = [];
-  while ((m = openRe.exec(html))) {
-    opens.push({ index: m.index, tag: m[1], full: m[0] });
+  while ((m = openRe.exec(scope))) {
+    opens.push(m.index);
   }
 
   for (let i = 0; i < opens.length; i++) {
-    const start = opens[i].index;
-    const end = i + 1 < opens.length ? opens[i + 1].index : Math.min(html.length, start + 4000);
-    const block = html.slice(start, end);
-
-    if (!/\bthumbnail-info-wrapper\b/i.test(block)) continue;
+    const a = opens[i];
+    const b = i + 1 < opens.length ? opens[i + 1] : Math.min(scope.length, a + 3500);
+    const block = scope.slice(a, b);
 
     const linkM = block.match(
       /href=["']((?:https?:\/\/[^"']+)?\/view_video\.php\?viewkey=([a-zA-Z0-9]+))["']/i
@@ -90,19 +97,10 @@ function parseThumbnailInfoWrappers(html) {
     if (href.startsWith("/")) href = "https://www.pornhub.com" + href;
 
     let title = "";
-    const titleM = block.match(
-      /class=["'][^"']*\btitle\b[^"']*["'][^>]*>[\s\S]*?<a[^>]+href=["'][^"']*viewkey=[^"']+["'][^>]*>([\s\S]*?)<\/a>/i
-    );
+    const titleM =
+      block.match(/class=["'][^"']*\btitle\b[^"']*["'][^>]*>[\s\S]*?<a[^>]*>([\s\S]*?)<\/a>/i) ||
+      block.match(/href=["'][^"']*viewkey=[^"']+["'][^>]*>([\s\S]*?)<\/a>/i);
     if (titleM) title = stripTags(titleM[1]);
-    if (!title) {
-      const aM = block.match(
-        new RegExp(
-          `href=["'][^"']*viewkey=${viewkey}["'][^>]*>([\\s\\S]*?)<\\/a>`,
-          "i"
-        )
-      );
-      if (aM) title = stripTags(aM[1]);
-    }
     if (!title || title.length < 2) title = `Video ${viewkey}`;
 
     let views = "—";
@@ -152,16 +150,10 @@ function parseFallbackListing(html) {
   return videos;
 }
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 function parseVideoComments(html) {
   let comment_count = null;
   let last_comment = null;
 
-  // Prefer #cmtWrapper / .cmtHeader:
-  // <div class="cmtHeader"><h2>All Comments <span>(4)</span></h2></div>
   const wrapperIdx = html.search(/id=["']cmtWrapper["']/i);
   const headerIdx = html.search(/class=["'][^"']*\bcmtHeader\b/i);
   const regionStart = wrapperIdx >= 0 ? wrapperIdx : headerIdx >= 0 ? headerIdx : -1;
@@ -206,7 +198,7 @@ async function fetchHtml(url) {
   const res = await fetch(url, {
     headers: {
       "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
       Accept: "text/html,application/xhtml+xml",
       "Accept-Language": "en-US,en;q=0.9",
       Referer: "https://www.pornhub.com/",
@@ -234,8 +226,8 @@ async function scrapeChannel(url) {
   }
 
   await sleep(800);
-  let videos = parseThumbnailInfoWrappers(html);
-  let source = "thumbnail-info-wrapper";
+  let videos = parseAfterContentTitle(html);
+  let source = "underThumb-info after contentTitle (mobile UA)";
   if (videos.length === 0) {
     videos = parseFallbackListing(html);
     source = "fallback-links";
@@ -265,7 +257,7 @@ async function scrapeChannel(url) {
     note:
       videos.length > 0
         ? `Source: ${source}. ${videos.length} videos; comments from ${limit} pages (1.2s delay).`
-        : "No thumbnail-info-wrapper (or links) found — HTML empty or JS-rendered.",
+        : "No underThumb-info after contentTitle — HTML empty or different layout.",
   };
 }
 
