@@ -152,18 +152,41 @@ function parseFallbackListing(html) {
   return videos;
 }
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 function parseVideoComments(html) {
   let comment_count = null;
   let last_comment = null;
 
-  const headerRe =
-    /class=["'][^"']*\bcmtHeader\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|span|h1|h2|h3)>/i;
-  const hm = html.match(headerRe);
-  if (hm) {
-    const text = stripTags(hm[1]);
-    const num = text.match(/(\d[\d,]*)/);
-    if (num) comment_count = num[1].replace(/,/g, "");
-    else comment_count = text;
+  // Prefer #cmtWrapper / .cmtHeader:
+  // <div class="cmtHeader"><h2>All Comments <span>(4)</span></h2></div>
+  const wrapperIdx = html.search(/id=["']cmtWrapper["']/i);
+  const headerIdx = html.search(/class=["'][^"']*\bcmtHeader\b/i);
+  const regionStart = wrapperIdx >= 0 ? wrapperIdx : headerIdx >= 0 ? headerIdx : -1;
+  if (regionStart >= 0) {
+    const region = html.slice(regionStart, regionStart + 8000);
+
+    let m =
+      region.match(/cmtHeader[\s\S]{0,400}?<span[^>]*>\s*\(\s*([\d,]+)\s*\)\s*<\/span>/i) ||
+      region.match(/All\s*Comments[\s\S]{0,120}?<span[^>]*>\s*\(?\s*([\d,]+)\s*\)?\s*<\/span>/i) ||
+      region.match(/class=["'][^"']*\bcmtHeader\b[^"']*["'][\s\S]{0,500}?\(\s*([\d,]+)\s*\)/i);
+    if (m) {
+      comment_count = m[1].replace(/,/g, "");
+    } else {
+      const text = stripTags(
+        (region.match(/class=["'][^"']*\bcmtHeader\b[^"']*["'][^>]*>([\s\S]{0,800})/i) || [])[1] ||
+          region.slice(0, 500)
+      );
+      const num = text.match(/(\d[\d,]*)/);
+      if (num) comment_count = num[1].replace(/,/g, "");
+    }
+  }
+
+  if (comment_count == null) {
+    const g = html.match(/All\s*Comments[\s\S]{0,80}?\(\s*([\d,]+)\s*\)/i);
+    if (g) comment_count = g[1].replace(/,/g, "");
   }
 
   const cmtRe =
@@ -210,6 +233,7 @@ async function scrapeChannel(url) {
     };
   }
 
+  await sleep(800);
   let videos = parseThumbnailInfoWrappers(html);
   let source = "thumbnail-info-wrapper";
   if (videos.length === 0) {
@@ -218,8 +242,10 @@ async function scrapeChannel(url) {
   }
 
   const limit = Math.min(videos.length, 12);
+  const delayMs = 1200;
   for (let i = 0; i < limit; i++) {
     if (!videos[i].url) continue;
+    if (i > 0) await sleep(delayMs);
     try {
       const vhtml = await fetchHtml(videos[i].url);
       const meta = parseVideoComments(vhtml);
@@ -238,7 +264,7 @@ async function scrapeChannel(url) {
     scraped_at: new Date().toISOString(),
     note:
       videos.length > 0
-        ? `Source: ${source}. ${videos.length} videos; comments from ${limit} pages.`
+        ? `Source: ${source}. ${videos.length} videos; comments from ${limit} pages (1.2s delay).`
         : "No thumbnail-info-wrapper (or links) found — HTML empty or JS-rendered.",
   };
 }
