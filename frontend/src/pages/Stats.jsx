@@ -108,9 +108,8 @@ export default function Stats() {
       <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 mb-8">
         <h3 className="font-semibold mb-1">Channel tracker</h3>
         <p className="text-xs text-slate-500 mb-4">
-          Paste a channel URL (e.g. https://www.pornhub.com/channels/brazzers). Saved as
-          &quot;Channel Brazzers&quot;. Scrapes titles (class=title), views (class=views),
-          comment totals (class=cmtHeader), and last comment (class=commentMessage) when HTML is available.
+          Paste a channel URL. Videos from underThumb-info (after contentTitle). Comment count from cmtHeader;
+          hover Comments for last commentText body.
         </p>
 
         <form onSubmit={addChannel} className="flex flex-col sm:flex-row gap-2 mb-4">
@@ -189,8 +188,20 @@ export default function Stats() {
                   <tr key={i} className="border-t border-slate-800 align-top">
                     <td className="px-4 py-3 max-w-[220px]"><span className="line-clamp-2">{v.title}</span></td>
                     <td className="px-4 py-3 whitespace-nowrap text-slate-300">{v.views}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-slate-300">{v.comment_count ?? "—"}</td>
-                    <td className="px-4 py-3 max-w-[240px] text-slate-400 text-xs"><span className="line-clamp-3">{v.last_comment || "—"}</span></td>
+                    <td
+                      className="px-4 py-3 whitespace-nowrap text-slate-300"
+                      title={v.comment_alt || v.last_comment || ""}
+                      aria-label={v.comment_alt || v.last_comment || undefined}
+                    >
+                      <span title={v.comment_alt || v.last_comment || ""}>
+                        {v.comment_count ?? "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 max-w-[240px] text-slate-400 text-xs">
+                      <span className="line-clamp-3" title={v.comment_alt || v.last_comment || ""}>
+                        {v.comment_alt || v.last_comment || "—"}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       {v.url ? (
                         <a href={v.url} target="_blank" rel="noreferrer" className="text-brand-500 hover:underline inline-flex items-center gap-1 text-xs">
