@@ -70,6 +70,20 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
+
+  listStatChannels: () => request("/stats/channels"),
+  addStatChannel: (body) =>
+    request("/stats/channels", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  deleteStatChannel: (id) =>
+    request("/stats/channels", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    }),
 };
 
 export function setCredentials(user, pass) {
